@@ -155,11 +155,8 @@ Pop Node: G
 *Project is under development. Contributions are appreciated.*   
 
 
-## Authors
-
-* **Rafiul Alam** - *Initial work* - [Colossus21](https://github.com/colossus21)
 
 
 ## Acknowledgments
 
-* PriorityQueue (https://golang.org/pkg/container/heap/#example__priorityQueue)
+* Official Golang Website (https://golang.org/pkg/container/heap/#example__priorityQueue)
