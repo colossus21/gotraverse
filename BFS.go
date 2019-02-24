@@ -4,10 +4,16 @@ import (
 	"fmt"
 )
 //Performs BFS on the given node until the goal node is found. Note that, it doesn't take weight and heuristic into consideration
-func BFS(startNode *Node, goalNode *Node) *Node {
+type BFS struct {
+	startNode *Node
+	goalNode *Node
+	capturedNode *Node
+}
+
+func (s *BFS) Search() GoalSearch {
 	fmt.Println("BFS")
 
-	queue := []*Node {startNode}
+	queue := []*Node {s.startNode}
 
 	for len(queue)>0 {
 		if LOG_BFS_STEPS {
@@ -23,8 +29,8 @@ func BFS(startNode *Node, goalNode *Node) *Node {
 		}
 		//Remove first Node ie. Dequeue
 		queue = queue[1:]
-		if removedNode == goalNode {
-			return goalNode
+		if removedNode == s.goalNode {
+			s.capturedNode = removedNode
 		}
 		for _, v := range removedNode.edges{
 			if !v.to.isClosed {
@@ -34,5 +40,21 @@ func BFS(startNode *Node, goalNode *Node) *Node {
 		}
 
 	}
-	return new(Node)
+	s.capturedNode = new(Node)
+	return s
 }
+
+func (s *BFS) SetIterativeNode(node *Node) GoalSearch {
+	s.startNode = node
+	return s
+}
+
+func (s *BFS) SetGoalNode(node *Node) GoalSearch {
+	s.goalNode = node
+	return s
+}
+
+func (s *BFS) GetCapturedNode() *Node {
+	return s.capturedNode
+}
+

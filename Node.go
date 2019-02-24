@@ -6,6 +6,7 @@ type Node struct {
 	parent *Node
 	edges []*Edge
 	name string
+	data interface{}
 	heuristicValue int
 	distanceFromStartNode int
 	isClosed bool

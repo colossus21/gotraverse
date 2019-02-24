@@ -5,10 +5,16 @@ import (
 	"fmt"
 )
 // Performs Greedy Search on the given node until the goal node is found.
-func GreedySearch(startNode *Node, goalNode *Node) *Node {
+type GreedySearch struct {
+	startNode *Node
+	goalNode *Node
+	capturedNode *Node
+}
+
+func (s *GreedySearch) Search() GoalSearch {
 	pq := PriorityQueue{}
 	heap.Init(&pq)
-	heap.Push(&pq, NodeItem(startNode, startNode.heuristicValue))
+	heap.Push(&pq, NodeItem(s.startNode, s.startNode.heuristicValue))
 	for pq.Len()>0 {
 		if (LOG_GREEDY_STEPS) {
 			for _, n := range pq {
@@ -21,8 +27,9 @@ func GreedySearch(startNode *Node, goalNode *Node) *Node {
 		if (LOG_GREEDY_STEPS) {
 			fmt.Println(removedNode.value.name)
 		}
-		if (removedNode.value == goalNode) {
-			return removedNode.value
+		if (removedNode.value == s.goalNode) {
+			s.capturedNode = removedNode.value
+			return s
 		}
 		for _, v := range removedNode.value.edges {
 			if (LOG_GREEDY_DETAILS) {
@@ -46,6 +53,19 @@ func GreedySearch(startNode *Node, goalNode *Node) *Node {
 			}
 		}
 	}
-	panic("Node not found!!")
+	return s
 }
 
+func (s *GreedySearch) SetIterativeNode(node *Node) GoalSearch {
+	s.startNode = node
+	return s
+}
+
+func (s *GreedySearch) SetGoalNode(node *Node) GoalSearch {
+	s.goalNode = node
+	return s
+}
+
+func (s *GreedySearch) GetCapturedNode() *Node {
+	return s.capturedNode
+}

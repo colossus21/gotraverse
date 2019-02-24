@@ -10,37 +10,43 @@ import "github.com/colossus21/gotraverse"
 ``` 
 
 ## Getting Started
-### Create Node Map
+### Create Graph
 
-To work with nodes you need to create a map of nodes with heuristic values.
+Let's create a graph considering a parent node, "S"
 
 ```go 
 nodesStr := "S 8 A 8 B 4 C 3 D inf E inf G 0"
-Nodes := gotraverse.MakeNodes(inp)
-```
-MakeNodes takes a string with nodes separated by its heuristic values and returns a Node map.
-Note that,heuristic values can be of any numeric positive value and a special value called "inf" which is accepted as infinity.
-### Add Edges
-
-Edges can be added very easily using MakeEdges function.
-
-```go 
 edgesStr := "S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5"
-Edges := gotraverse.MakeEdges(edgesStr, Nodes, "S")
+g := gotraverse.MakeGraph(nodesStr, edgesStr, "S") 
 ```
-MakeEdges takes a string value with all the edge information, the Node map and a node to return. ie. "S A 3" creates a directed edge from S to A with distance 3. All connections are separated by space as above. 
+Nodes are represented as name and heuristic value separated by space. ie. S 8 means node named S has heuristic value S. Edges are represented as starting node, connected node and weight/distance seperated by space. ie. S A 3 means S is connected to A with a weight of 3. 
 
 ### Run Algorithm and Capture Node
 
-You can apply the provided graph algorithms and return the node when a goal node is stated.
+All algorithms comes with the following interface
 
-```go 
-nodeFound := gotraverse.AStar(Edges, Nodes["G"])
+```go
+type GoalSearch interface {
+	SetIterativeNode(node *Node) GoalSearch
+	SetGoalNode(node *Node) GoalSearch
+	Search() GoalSearch
+	GetCapturedNode() *Node
+}
 ```
-All algorithms provided takes the edges and a goal node as parameter. If you are willing to traverse all nodes in a graph, provide a blank string.
-nodeFound will have the goal Node with the path it took to reach there and prints the following:
+Let's search for a goal node using A* algorithm
+```go
+// Create an instance of the algorithm
+astar := new(gotraverse.AStar)
+// Perform a search operation
+g.InitGoalSearch(searchAlgorithm, "G").Search()
+// Print distance taken
+fmt.Println(astar.GetCapturedNode().GetTotalDistance())
+// Traverse the node to check all it's path choices
+astar.GetCapturedNode().Traverse()
 ```
-[S 0]
+Output
+```
+[S 8]
 S
 [B 5][A 11][C 11]
 B
@@ -50,28 +56,25 @@ C
 A
 [G 13][G 21][D 2147483653][E 2147483657]
 G
-```
-You can further check the paths traversed by nodeFound by using the provided PrintNodePaths function:
-```go
-gotraverse.PrintNodePaths(nodeFound)
-```
-The following is printed in the console:
-```
+
+13
+
 Node: S G: 0 H: 8 F: 8
 Node: C G: 8 H: 3 F: 3
 Node: G G: 13 H: 0 F: 0
 ```
-By using this table you can check all the paths the node took to reach its goal along with its heuristic and distance information.
+
+
 ## Demo
 The Nodes and Edges information used above was taken from the following graph, let's check out how easily we traverse the following graph implementing the provided algorithms. Console will provide the trace notes:
 ![alt text](/img/Graph.png)
 
 ##### A* Search
 ```go
-gotraverse.AStar(Edges, Nodes["G"])
+g.InitGoalSearch( new(gotraverse.AStar), "G").Search()
 ```
 ```
-[S 0]
+[S 8]
 S
 [B 5][A 11][C 11]
 B
@@ -85,7 +88,7 @@ G
 
 ##### Greedy Search
 ```go
-gotraverse.GreedySearch(Edges, Nodes["G"])
+g.InitGoalSearch( new(gotraverse.GreedySearch), "G").Search()
 ```
 ```
 [S 8]
@@ -97,7 +100,7 @@ G
 ```
 ##### Uniform Cost Search (UCS)
 ```go
-gotraverse.UCS(Edges, Nodes["G"])
+g.InitGoalSearch( new(gotraverse.UCS), "G").Search()
 ```
 ```
 [S 0]
@@ -117,7 +120,7 @@ G
 ```
 ##### BFS
 ```go
-gotraverse.BFS(Edges, Nodes["G"])
+g.InitGoalSearch( new(gotraverse.BFS), "G").Search()
 ```
 ```
 [S ]
@@ -137,7 +140,7 @@ Dequeue Node: G
 ```
 ##### DFS
 ```go
-gotraverse.BFS(Edges, Nodes["G"])
+g.InitGoalSearch( new(gotraverse.DFS), "G").Search()
 ```
 ```
 [S ]
@@ -149,7 +152,7 @@ Pop Node: G
 ```
 
 
-### And coding style tests
+*Project is under development. Contributions are appreciated.*   
 
 
 ## Authors

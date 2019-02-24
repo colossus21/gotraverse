@@ -5,10 +5,16 @@ import (
 	"fmt"
 )
 //Performs UCS on the given node until the goal node is found
-func UCS(startNode *Node, goalNode *Node) *Node {
+type UCS struct {
+	startNode *Node
+	goalNode *Node
+	capturedNode *Node
+}
+
+func (s *UCS) Search() GoalSearch {
 	pq := PriorityQueue{}
 	heap.Init(&pq)
-	heap.Push(&pq, NodeItem(startNode, 0))
+	heap.Push(&pq, NodeItem(s.startNode, s.startNode.distanceFromStartNode))
 	for pq.Len()>0 {
 		if (LOG_UCS_STEPS) {
 			for _, n := range pq {
@@ -21,8 +27,9 @@ func UCS(startNode *Node, goalNode *Node) *Node {
 		if (LOG_UCS_STEPS) {
 			fmt.Println(removedNode.value.name)
 		}
-		if (removedNode.value == goalNode) {
-			return removedNode.value
+		if (removedNode.value == s.goalNode) {
+			s.capturedNode = removedNode.value
+			return s
 		}
 		for _, v := range removedNode.value.edges {
 			if (LOG_UCS_DETAILS) {
@@ -56,7 +63,19 @@ func UCS(startNode *Node, goalNode *Node) *Node {
 			}
 		}
 	}
-	panic("Node not found!!")
+	return s
 }
 
+func (s *UCS) SetIterativeNode(node *Node) GoalSearch {
+	s.startNode = node
+	return s
+}
 
+func (s *UCS) SetGoalNode(node *Node) GoalSearch {
+	s.goalNode = node
+	return s
+}
+
+func (s *UCS) GetCapturedNode() *Node {
+	return s.capturedNode
+}
