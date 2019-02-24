@@ -19,11 +19,11 @@ nodesStr := "S 8 A 8 B 4 C 3 D inf E inf G 0"
 edgesStr := "S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5"
 g := gotraverse.MakeGraph(nodesStr, edgesStr, "S") 
 ```
-Nodes are represented as name and heuristic value separated by space. ie. S 8 means node named S has heuristic value S. Edges are represented as starting node, connected node and weight/distance seperated by space. ie. S A 3 means S is connected to A with a weight of 3. 
+Nodes are represented as name and heuristic value separated by space. ie. S 8 means node named S has heuristic value 8. Edges are represented as starting node, connected node and weight/distance seperated by spaces. ie. S A 3 indicates S is connected to A with a weight of 3. 
 
 ### Run Algorithm and Capture Node
 
-All algorithms comes with the following interface
+All algorithms come with the following interface
 
 ```go
 type GoalSearch interface {
@@ -66,7 +66,7 @@ Node: G G: 13 H: 0 F: 0
 
 
 ## Demo
-The Nodes and Edges information used above was taken from the following graph, let's check out how easily we traverse the following graph implementing the provided algorithms. Console will provide the trace notes:
+The Nodes and Edges information used above was taken from the following graph
 ![alt text](/img/Graph.png)
 
 ##### A* Search
