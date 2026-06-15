@@ -23,9 +23,13 @@ func main() {
 	algos := []gotraverse.Algorithm{
 		gotraverse.BFS{},
 		gotraverse.DFS{},
+		gotraverse.DepthLimited{Limit: 5},
+		gotraverse.IterativeDeepening{},
+		gotraverse.Bidirectional{},
 		gotraverse.UCS{},
 		gotraverse.Greedy{},
 		gotraverse.AStar{},
+		gotraverse.IDAStar{},
 	}
 
 	for _, algo := range algos {

@@ -45,6 +45,13 @@ func TestSearchAlgorithms(t *testing.T) {
 		// BFS finds the fewest-edge path; S-A-G and S-C-G both have 2 edges,
 		// and A is declared before C, so BFS discovers G via A first.
 		{gotraverse.BFS{}, []string{"S", "A", "G"}, 18},
+		// Recursive depth-first variants visit A's edges before C's, so they
+		// reach G via A (2 edges, cost 18) — the shallowest goal.
+		{gotraverse.DepthLimited{Limit: 3}, []string{"S", "A", "G"}, 18},
+		{gotraverse.IterativeDeepening{}, []string{"S", "A", "G"}, 18},
+		{gotraverse.Bidirectional{}, []string{"S", "A", "G"}, 18},
+		// IDA* is cost-optimal like A*, so it returns the cheaper S-C-G.
+		{gotraverse.IDAStar{}, []string{"S", "C", "G"}, 13},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +104,8 @@ func TestGoalUnreachable(t *testing.T) {
 	}
 	for _, algo := range []gotraverse.Algorithm{
 		gotraverse.BFS{}, gotraverse.DFS{}, gotraverse.UCS{}, gotraverse.Greedy{}, gotraverse.AStar{},
+		gotraverse.DepthLimited{Limit: 5}, gotraverse.IterativeDeepening{},
+		gotraverse.IDAStar{}, gotraverse.Bidirectional{},
 	} {
 		res, err := g.Search(algo, "S", "X")
 		if err != nil {
@@ -115,6 +124,8 @@ func TestStartEqualsGoal(t *testing.T) {
 	g := refGraph(t)
 	for _, algo := range []gotraverse.Algorithm{
 		gotraverse.BFS{}, gotraverse.DFS{}, gotraverse.UCS{}, gotraverse.Greedy{}, gotraverse.AStar{},
+		gotraverse.DepthLimited{Limit: 5}, gotraverse.IterativeDeepening{},
+		gotraverse.IDAStar{}, gotraverse.Bidirectional{},
 	} {
 		res, err := g.Search(algo, "S", "S")
 		if err != nil {
@@ -161,6 +172,26 @@ func TestParseInfHeuristic(t *testing.T) {
 	}
 	if h, _ := g.Heuristic("D"); h != gotraverse.Inf {
 		t.Errorf("heuristic(D) = %d, want Inf (%d)", h, gotraverse.Inf)
+	}
+}
+
+func TestDepthLimitCutoff(t *testing.T) {
+	g := refGraph(t)
+	// G is 2 edges from S, so a limit of 1 must not reach it...
+	res, err := g.Search(gotraverse.DepthLimited{Limit: 1}, "S", "G")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if res.Found {
+		t.Errorf("limit 1 reached G at depth 2: %v", res.Path)
+	}
+	// ...but a limit of 2 must.
+	res, err = g.Search(gotraverse.DepthLimited{Limit: 2}, "S", "G")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !res.Found {
+		t.Error("limit 2 failed to reach G at depth 2")
 	}
 }
 

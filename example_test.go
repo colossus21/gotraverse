@@ -42,6 +42,24 @@ func ExampleGraph_Search() {
 	// A*  [S C G] cost=13
 }
 
+// ExampleDepthLimited shows the configurable depth cutoff: G sits two edges
+// from S, so a limit of 1 cannot reach it but a limit of 2 can.
+func ExampleDepthLimited() {
+	g, _ := gotraverse.Parse(
+		"S 8 A 8 B 4 C 3 D inf E inf G 0",
+		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
+	)
+
+	shallow, _ := g.Search(gotraverse.DepthLimited{Limit: 1}, "S", "G")
+	deep, _ := g.Search(gotraverse.DepthLimited{Limit: 2}, "S", "G")
+
+	fmt.Println(shallow.Found)
+	fmt.Println(deep.Found, deep.Path)
+	// Output:
+	// false
+	// true [S A G]
+}
+
 // ExampleNewGraph builds a graph programmatically instead of parsing strings.
 func ExampleNewGraph() {
 	g := gotraverse.NewGraph()

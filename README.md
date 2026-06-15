@@ -7,13 +7,21 @@
 A small Go library of classic graph search algorithms over a weighted directed
 graph with per-node heuristics:
 
-| Algorithm | Uses weights | Uses heuristic | Optimal |
-|-----------|:------------:|:--------------:|:-------:|
-| **BFS** (breadth-first)       | – | – | fewest edges |
-| **DFS** (depth-first)         | – | – | no |
-| **UCS** (uniform cost)        | ✓ | – | yes (min cost) |
-| **Greedy** (best-first)       | – | ✓ | no |
-| **A\*** | ✓ | ✓ | yes, with an admissible heuristic |
+| Algorithm | Type | Uses weights | Uses heuristic | Optimal |
+|-----------|------|:------------:|:--------------:|:-------:|
+| **BFS** (breadth-first)            | uninformed | – | – | fewest edges |
+| **DFS** (depth-first)              | uninformed | – | – | no |
+| **Depth-Limited** (DFS to a depth) | uninformed | – | – | no |
+| **IDDFS** (iterative deepening)    | uninformed | – | – | fewest edges |
+| **Bidirectional** (BFS both ends)  | uninformed | – | – | fewest edges |
+| **UCS** (uniform cost)             | informed   | ✓ | – | yes (min cost) |
+| **Greedy** (best-first)            | informed   | – | ✓ | no |
+| **A\***                            | informed   | ✓ | ✓ | yes, with an admissible heuristic |
+| **IDA\*** (iterative-deepening A\*)| informed   | ✓ | ✓ | yes, with an admissible heuristic |
+
+All algorithms implement a common `Algorithm` interface, so they are
+interchangeable; `Depth-Limited` additionally takes a `Limit` field, e.g.
+`gotraverse.DepthLimited{Limit: 5}`.
 
 ## Install
 
@@ -120,6 +128,21 @@ expanded : S -> C -> G
 path     : S -> C -> G
 cost     : 13
 
+== Depth-Limited ==
+expanded : S -> A -> D -> E -> G
+path     : S -> A -> G
+cost     : 18
+
+== IDDFS ==
+expanded : S -> S -> A -> B -> C -> S -> A -> D -> E -> G
+path     : S -> A -> G
+cost     : 18
+
+== Bidirectional ==
+expanded : S -> G
+path     : S -> A -> G
+cost     : 18
+
 == UCS ==
 expanded : S -> B -> A -> D -> C -> E -> G
 path     : S -> C -> G
@@ -134,10 +157,17 @@ cost     : 13
 expanded : S -> B -> A -> C -> G
 path     : S -> C -> G
 cost     : 13
+
+== IDA* ==
+expanded : S -> B -> S -> A -> B -> C -> S -> A -> B -> C -> G
+path     : S -> C -> G
+cost     : 13
 ```
 
-BFS returns `S -> A -> G` (fewest edges; `A` is declared before `C`) while the
-cost-aware algorithms find the cheaper `S -> C -> G`.
+The fewest-edge searches (BFS, IDDFS, Bidirectional) return `S -> A -> G`
+(`A` is declared before `C`), while the cost-aware searches (UCS, A\*, IDA\*)
+find the cheaper `S -> C -> G`. The repeated nodes in the IDDFS and IDA\*
+traces are the successive deepening/threshold passes.
 
 ## Development
 
