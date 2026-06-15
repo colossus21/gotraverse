@@ -3,6 +3,9 @@ package gotraverse
 // AStar is A* search. It expands nodes in order of f(n) = g(n) + h(n), the
 // accumulated path cost plus the heuristic estimate to the goal. With an
 // admissible (non-overestimating) heuristic it returns a minimum-cost path.
+//
+// Like UCS it assumes non-negative edge weights; on negative weights the
+// returned cost is not guaranteed optimal.
 type AStar struct{}
 
 func (AStar) Name() string { return "A*" }
