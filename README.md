@@ -1,162 +1,156 @@
 # GoTraverse
-### Installation
-Download a release or directly build the code from this repository
-```
+
+[![CI](https://github.com/colossus21/gotraverse/actions/workflows/ci.yml/badge.svg)](https://github.com/colossus21/gotraverse/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/colossus21/gotraverse.svg)](https://pkg.go.dev/github.com/colossus21/gotraverse)
+[![Go Report Card](https://goreportcard.com/badge/github.com/colossus21/gotraverse)](https://goreportcard.com/report/github.com/colossus21/gotraverse)
+
+A small Go library of classic graph search algorithms over a weighted directed
+graph with per-node heuristics:
+
+| Algorithm | Uses weights | Uses heuristic | Optimal |
+|-----------|:------------:|:--------------:|:-------:|
+| **BFS** (breadth-first)       | – | – | fewest edges |
+| **DFS** (depth-first)         | – | – | no |
+| **UCS** (uniform cost)        | ✓ | – | yes (min cost) |
+| **Greedy** (best-first)       | – | ✓ | no |
+| **A\*** | ✓ | ✓ | yes, with an admissible heuristic |
+
+## Install
+
+```sh
 go get github.com/colossus21/gotraverse
 ```
-Import the library in your project
+
 ```go
 import "github.com/colossus21/gotraverse"
-``` 
-
-## Getting Started
-### Create Graph
-
-Let's create a graph considering a parent node, "S"
-
-```go 
-nodesStr := "S 8 A 8 B 4 C 3 D inf E inf G 0"
-edgesStr := "S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5"
-g := gotraverse.MakeGraph(nodesStr, edgesStr, "S") 
 ```
-Nodes are represented as name and heuristic value separated by space. ie. S 8 means node named S has heuristic value 8. Edges are represented as starting node, connected node and weight/distance seperated by spaces. ie. S A 3 indicates S is connected to A with a weight of 3. 
 
-### Run Algorithm and Capture Node
+Requires Go 1.23+.
 
-All algorithms come with the following interface
+## Quick start
+
+Build a graph, then run any algorithm through the `Algorithm` strategy
+interface. Nodes are `name heuristic` pairs; edges are `from to weight` triples.
+A heuristic of `inf` is treated as unreachable-by-heuristic.
 
 ```go
-type GoalSearch interface {
-	SetIterativeNode(node *Node) GoalSearch
-	SetGoalNode(node *Node) GoalSearch
-	Search() GoalSearch
-	GetCapturedNode() *Node
+package main
+
+import (
+	"fmt"
+
+	"github.com/colossus21/gotraverse"
+)
+
+func main() {
+	g, err := gotraverse.Parse(
+		"S 8 A 8 B 4 C 3 D inf E inf G 0",
+		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := g.Search(gotraverse.AStar{}, "S", "G")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(res.Found) // true
+	fmt.Println(res.Path)  // [S C G]
+	fmt.Println(res.Cost)  // 13
+	fmt.Println(res.Order) // [S B A C G]  (expansion order)
 }
 ```
-Let's search for a goal node using A* algorithm
+
+### Building a graph programmatically
+
 ```go
-// Create an instance of the algorithm
-astar := new(gotraverse.AStar)
-// Perform a search operation
-g.InitGoalSearch(searchAlgorithm, "G").Search()
-// Print distance taken
-fmt.Println(astar.GetCapturedNode().GetTotalDistance())
-// Traverse the node to check all it's path choices
-astar.GetCapturedNode().Traverse()
-```
-Output
-```
-[S 8]
-S
-[B 5][A 11][C 11]
-B
-[C 11][A 11][G 21]
-C
-[A 11][G 21][G 13]
-A
-[G 13][G 21][D 2147483653][E 2147483657]
-G
-
-13
-
-Node: S G: 0 H: 8 F: 8
-Node: C G: 8 H: 3 F: 3
-Node: G G: 13 H: 0 F: 0
+g := gotraverse.NewGraph()
+g.AddNode("S", 8)
+g.AddNode("G", 0)
+g.AddEdge("S", "G", 7) // returns an error if an endpoint is undeclared
 ```
 
+### Result
+
+`Search` returns a `Result`:
+
+```go
+type Result struct {
+	Algorithm string   // e.g. "A*"
+	Found     bool     // was the goal reached?
+	Path      []string // start..goal, inclusive (nil if not found)
+	Cost      int      // total edge weight along Path
+	Order     []string // nodes in the order they were expanded
+}
+```
+
+### Custom algorithms
+
+`Algorithm` is a two-method interface, so you can plug in your own strategy:
+
+```go
+type Algorithm interface {
+	Name() string
+	Search(g *gotraverse.Graph, start, goal string) (gotraverse.Result, error)
+}
+```
 
 ## Demo
-The Nodes and Edges information used above was taken from the following graph
-![alt text](/img/Graph.png)
 
-##### A* Search
-```go
-g.InitGoalSearch( new(gotraverse.AStar), "G").Search()
-```
-```
-[S 8]
-S
-[B 5][A 11][C 11]
-B
-[C 11][A 11][G 21]
-C
-[A 11][G 21][G 13]
-A
-[G 13][G 21][D 2147483653][E 2147483657]
-G
+The graph used above:
+
+![graph](/img/Graph.png)
+
+Run every algorithm against it:
+
+```sh
+go run ./example
 ```
 
-##### Greedy Search
-```go
-g.InitGoalSearch( new(gotraverse.GreedySearch), "G").Search()
 ```
-```
-[S 8]
-S
-[C 3][A 8][B 4]
-C
-[G 0][A 8][B 4]
-G
-```
-##### Uniform Cost Search (UCS)
-```go
-g.InitGoalSearch( new(gotraverse.UCS), "G").Search()
-```
-```
-[S 0]
-S
-[B 1][A 3][C 8]
-B
-[A 3][C 8][G 21]
-A
-[D 6][E 10][C 8][G 21][G 18]
-D
-[C 8][E 10][G 18][G 21]
-C
-[E 10][G 13][G 18][G 21]
-E
-[G 13][G 21][G 18]
-G
-```
-##### BFS
-```go
-g.InitGoalSearch( new(gotraverse.BFS), "G").Search()
-```
-```
-[S ]
-Dequeue Node: S
-[A B C ]
-Dequeue Node: B
-[B C D E G ]
-Dequeue Node: C
-[C D E G ]
-Dequeue Node: D
-[D E G ]
-Dequeue Node: D
-[E G ]
-Dequeue Node: E
-[G ]
-Dequeue Node: G
-```
-##### DFS
-```go
-g.InitGoalSearch( new(gotraverse.DFS), "G").Search()
-```
-```
-[S ]
-Pop Node: S
-[A B C ]
-Pop Node: C
-[A B G ]
-Pop Node: G
+== BFS ==
+expanded : S -> A -> B -> C -> D -> E -> G
+path     : S -> A -> G
+cost     : 18
+
+== DFS ==
+expanded : S -> C -> G
+path     : S -> C -> G
+cost     : 13
+
+== UCS ==
+expanded : S -> B -> A -> D -> C -> E -> G
+path     : S -> C -> G
+cost     : 13
+
+== Greedy ==
+expanded : S -> C -> G
+path     : S -> C -> G
+cost     : 13
+
+== A* ==
+expanded : S -> B -> A -> C -> G
+path     : S -> C -> G
+cost     : 13
 ```
 
+BFS returns `S -> A -> G` (fewest edges; `A` is declared before `C`) while the
+cost-aware algorithms find the cheaper `S -> C -> G`.
 
-*Project is under development. Contributions are appreciated.*   
+## Development
 
+```sh
+go build ./...
+go vet ./...
+go test -race ./...
+```
 
+## License
 
+See repository for license details.
 
 ## Acknowledgments
 
-* Official Golang Website (https://golang.org/pkg/container/heap/#example__priorityQueue)
+- Priority queue based on the [`container/heap`](https://pkg.go.dev/container/heap#example-package-PriorityQueue) example from the Go standard library.
