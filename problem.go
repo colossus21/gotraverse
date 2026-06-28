@@ -31,7 +31,10 @@
 //	res, _ := gotraverse.AStar(p)
 package gotraverse
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // Edge is a weighted connection to a node.
 type Edge[N comparable] struct {
@@ -67,6 +70,31 @@ type Problem[N comparable] struct {
 	// GoalNodes lists concrete goal nodes for [Bidirectional] to seed its
 	// backward search from. [Graph.Problem] sets this automatically.
 	GoalNodes []N
+	// Context, if non-nil, makes a search cancellable: every algorithm checks
+	// it once per node expansion and, if it is done, abandons the search and
+	// returns ctx.Err() (e.g. [context.Canceled] or [context.DeadlineExceeded])
+	// instead of a result. A nil Context never cancels. Like the context on an
+	// [net/http.Request], it travels with the per-search request object; prefer
+	// setting it with [Problem.WithContext].
+	Context context.Context
+}
+
+// WithContext returns a copy of p with its Context set to ctx, mirroring
+// net/http.Request.WithContext. It panics if ctx is nil.
+func (p Problem[N]) WithContext(ctx context.Context) Problem[N] {
+	if ctx == nil {
+		panic("gotraverse: nil context")
+	}
+	p.Context = ctx
+	return p
+}
+
+// cancelled returns the context error if the search has been cancelled, or nil.
+func (p Problem[N]) cancelled() error {
+	if p.Context == nil {
+		return nil
+	}
+	return p.Context.Err()
 }
 
 // GoalNode returns a goal predicate matching a single target node.

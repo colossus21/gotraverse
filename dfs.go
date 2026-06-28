@@ -22,6 +22,9 @@ func DFS[N comparable](p Problem[N]) (Result[N], error) {
 	stack := []frame[N]{{node: p.Start}}
 
 	for len(stack) > 0 {
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		top := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		if visited[top.node] {

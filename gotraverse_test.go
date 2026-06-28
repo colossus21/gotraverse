@@ -1,9 +1,12 @@
 package gotraverse_test
 
 import (
+	"context"
+	"errors"
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/colossus21/gotraverse"
 )
@@ -233,6 +236,64 @@ func TestProgrammaticBuild(t *testing.T) {
 	}
 	if !res.Found || res.Cost != 7 {
 		t.Errorf("found=%v cost=%v, want found 7", res.Found, res.Cost)
+	}
+}
+
+func TestContextCancelled(t *testing.T) {
+	g, err := gotraverse.Parse(refNodes, refEdges)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already done before any search runs
+
+	for name, search := range allAlgorithms() {
+		p := g.Problem("S", "G").WithContext(ctx)
+		res, err := search(p)
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("%s: err = %v, want context.Canceled", name, err)
+		}
+		if res.Found {
+			t.Errorf("%s: found goal despite cancellation", name)
+		}
+	}
+}
+
+func TestContextTimeoutStopsInfiniteSearch(t *testing.T) {
+	// An infinite graph (n -> n+1 forever) with a goal that never matches:
+	// only the context can stop these searches. If cancellation were broken
+	// the test would hang and fail via the test timeout.
+	mkProblem := func(ctx context.Context) gotraverse.Problem[int] {
+		return gotraverse.Problem[int]{
+			Start: 0,
+			Goal:  func(int) bool { return false },
+			Neighbors: func(n int) []gotraverse.Edge[int] {
+				return []gotraverse.Edge[int]{{To: n + 1, Weight: 1}}
+			},
+			Context: ctx,
+		}
+	}
+
+	cases := map[string]gotraverse.SearchFunc[int]{
+		"BFS":           gotraverse.BFS[int],
+		"DFS":           gotraverse.DFS[int],
+		"UCS":           gotraverse.UCS[int],
+		"Greedy":        gotraverse.Greedy[int],
+		"A*":            gotraverse.AStar[int],
+		"IDDFS":         gotraverse.IDDFS[int],
+		"IDA*":          gotraverse.IDAStar[int],
+		"Depth-Limited": gotraverse.DepthLimited[int](1 << 30),
+	}
+	for name, search := range cases {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		res, err := search(mkProblem(ctx))
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: err = %v, want context.DeadlineExceeded", name, err)
+		}
+		if res.Found {
+			t.Errorf("%s: found a goal on an infinite graph", name)
+		}
 	}
 }
 

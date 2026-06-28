@@ -20,6 +20,9 @@ func IDDFS[N comparable](p Problem[N]) (Result[N], error) {
 	for limit := 0; ; limit++ {
 		sub, cutoff := depthLimited(p, limit, "IDDFS")
 		res.Order = append(res.Order, sub.Order...)
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		if sub.Found {
 			res.Found = true
 			res.Path = sub.Path

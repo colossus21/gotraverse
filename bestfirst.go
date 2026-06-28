@@ -30,6 +30,9 @@ func bestFirst[N comparable](p Problem[N], name string, relax bool, prio func(n 
 	seq++
 
 	for pq.Len() > 0 {
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		cur := heap.Pop(pq).(*pqItem[N])
 		if closed[cur.node] {
 			continue // stale entry left over from a relaxation

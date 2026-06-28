@@ -1,6 +1,7 @@
 package gotraverse_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/colossus21/gotraverse"
@@ -34,6 +35,22 @@ func ExampleProblem() {
 	res, _ := gotraverse.AStar(p)
 	fmt.Println(res.Path, res.Cost)
 	// Output: [1 2 5] 2
+}
+
+// ExampleProblem_withContext shows cancelling a search. A cancelled context
+// makes any algorithm abandon the search and return the context's error.
+func ExampleProblem_withContext() {
+	g, _ := gotraverse.Parse(
+		"S 8 A 8 B 4 C 3 D inf E inf G 0",
+		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // e.g. a timeout fired or the caller gave up
+
+	_, err := gotraverse.AStar(g.Problem("S", "G").WithContext(ctx))
+	fmt.Println(err)
+	// Output: context canceled
 }
 
 // ExampleDepthLimited shows the configurable depth cutoff: G sits two edges from

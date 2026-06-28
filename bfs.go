@@ -15,6 +15,9 @@ func BFS[N comparable](p Problem[N]) (Result[N], error) {
 	queue := []N{p.Start}
 
 	for len(queue) > 0 {
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		cur := queue[0]
 		queue = queue[1:]
 		res.Order = append(res.Order, cur)

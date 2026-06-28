@@ -15,8 +15,11 @@ func DepthLimited[N comparable](limit int) SearchFunc[N] {
 		if err := p.validate(); err != nil {
 			return res, err
 		}
-		res, _ = depthLimited(p, limit, "Depth-Limited")
-		return res, nil
+		r, _ := depthLimited(p, limit, "Depth-Limited")
+		if err := p.cancelled(); err != nil {
+			return r, err
+		}
+		return r, nil
 	}
 }
 
@@ -29,9 +32,17 @@ func depthLimited[N comparable](p Problem[N], limit int, name string) (Result[N]
 	onPath := map[N]bool{}
 	path := []N{}
 	cutoff := false
+	aborted := false
 
 	var dfs func(node N, depth int, cost float64) bool
 	dfs = func(node N, depth int, cost float64) bool {
+		if aborted {
+			return false
+		}
+		if p.cancelled() != nil {
+			aborted = true
+			return false // unwind; the caller reports ctx.Err()
+		}
 		res.Order = append(res.Order, node)
 		path = append(path, node)
 		onPath[node] = true

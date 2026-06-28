@@ -18,12 +18,20 @@ func IDAStar[N comparable](p Problem[N]) (Result[N], error) {
 
 	onPath := map[N]bool{}
 	path := []N{}
+	aborted := false
 
 	// dfs returns whether the goal was found, and the smallest f value that
 	// exceeded the current threshold (+Inf if none did), which becomes the next
 	// pass's threshold.
 	var dfs func(node N, gCost, threshold float64) (bool, float64)
 	dfs = func(node N, gCost, threshold float64) (bool, float64) {
+		if aborted {
+			return false, math.Inf(1)
+		}
+		if p.cancelled() != nil {
+			aborted = true
+			return false, math.Inf(1)
+		}
 		f := gCost + p.h(node)
 		if f > threshold {
 			return false, f
@@ -63,6 +71,9 @@ func IDAStar[N comparable](p Problem[N]) (Result[N], error) {
 	threshold := p.h(p.Start)
 	for {
 		found, t := dfs(p.Start, 0, threshold)
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		if found {
 			return res, nil
 		}

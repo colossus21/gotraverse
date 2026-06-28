@@ -120,6 +120,25 @@ res, _ := gotraverse.AStar(p)
 `Bidirectional` additionally needs `Predecessors` and `GoalNodes` — both are
 filled in for you by `Graph.Problem`.
 
+### Cancellation
+
+Searching a large or unbounded space can run a long time, so every algorithm
+honours a `context.Context`. Attach one with `WithContext` (like
+`http.Request`); the search checks it once per node expansion and returns the
+context's error if it is cancelled or times out:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+defer cancel()
+
+res, err := gotraverse.AStar(p.WithContext(ctx))
+if errors.Is(err, context.DeadlineExceeded) {
+	// gave up before finding a path
+}
+```
+
+A `Problem` with no context (the default) never cancels.
+
 ### Result and strategies
 
 ```go

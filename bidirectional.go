@@ -93,6 +93,9 @@ func Bidirectional[N comparable](p Problem[N]) (Result[N], error) {
 	}
 
 	for len(frontierF) > 0 && len(frontierB) > 0 && !meetFound {
+		if err := p.cancelled(); err != nil {
+			return res, err
+		}
 		if len(frontierF) <= len(frontierB) {
 			expandF()
 		} else {
