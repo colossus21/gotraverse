@@ -6,53 +6,45 @@ import (
 	"github.com/colossus21/gotraverse"
 )
 
-// ExampleParse builds a graph from the string format and runs A* on it.
+// ExampleParse builds an explicit graph from the string format and runs A*.
 func ExampleParse() {
-	g, err := gotraverse.Parse(
-		"S 8 A 8 B 4 C 3 D inf E inf G 0",
-		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	res, _ := g.Search(gotraverse.AStar{}, "S", "G")
-	fmt.Println(res.Path, res.Cost)
-	// Output: [S C G] 13
-}
-
-// ExampleGraph_Search compares the path each algorithm returns on the same
-// graph: the cost-aware searches find the cheaper S->C->G, while BFS returns
-// the fewest-edge S->A->G.
-func ExampleGraph_Search() {
 	g, _ := gotraverse.Parse(
 		"S 8 A 8 B 4 C 3 D inf E inf G 0",
 		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
 	)
-
-	for _, algo := range []gotraverse.Algorithm{
-		gotraverse.BFS{}, gotraverse.UCS{}, gotraverse.AStar{},
-	} {
-		res, _ := g.Search(algo, "S", "G")
-		fmt.Printf("%-3s %v cost=%d\n", res.Algorithm, res.Path, res.Cost)
-	}
-	// Output:
-	// BFS [S A G] cost=18
-	// UCS [S C G] cost=13
-	// A*  [S C G] cost=13
+	res, _ := gotraverse.AStar(g.Problem("S", "G"))
+	fmt.Println(res.Path, res.Cost)
+	// Output: [S C G] 13
 }
 
-// ExampleDepthLimited shows the configurable depth cutoff: G sits two edges
-// from S, so a limit of 1 cannot reach it but a limit of 2 can.
+// ExampleProblem searches an implicit graph that is never materialised: from n
+// you may step to 2n or 2n+1. Neighbours are generated on demand, so the graph
+// can be effectively unbounded.
+func ExampleProblem() {
+	p := gotraverse.Problem[int]{
+		Start: 1,
+		Goal:  gotraverse.GoalNode(5),
+		Neighbors: func(n int) []gotraverse.Edge[int] {
+			if n > 5 {
+				return nil
+			}
+			return []gotraverse.Edge[int]{{To: 2 * n, Weight: 1}, {To: 2*n + 1, Weight: 1}}
+		},
+	}
+	res, _ := gotraverse.AStar(p)
+	fmt.Println(res.Path, res.Cost)
+	// Output: [1 2 5] 2
+}
+
+// ExampleDepthLimited shows the configurable depth cutoff: G sits two edges from
+// S, so a limit of 1 cannot reach it but a limit of 2 can.
 func ExampleDepthLimited() {
 	g, _ := gotraverse.Parse(
 		"S 8 A 8 B 4 C 3 D inf E inf G 0",
 		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
 	)
-
-	shallow, _ := g.Search(gotraverse.DepthLimited{Limit: 1}, "S", "G")
-	deep, _ := g.Search(gotraverse.DepthLimited{Limit: 2}, "S", "G")
-
+	shallow, _ := gotraverse.DepthLimited[string](1)(g.Problem("S", "G"))
+	deep, _ := gotraverse.DepthLimited[string](2)(g.Problem("S", "G"))
 	fmt.Println(shallow.Found)
 	fmt.Println(deep.Found, deep.Path)
 	// Output:
@@ -60,16 +52,22 @@ func ExampleDepthLimited() {
 	// true [S A G]
 }
 
-// ExampleNewGraph builds a graph programmatically instead of parsing strings.
-func ExampleNewGraph() {
-	g := gotraverse.NewGraph()
-	g.AddNode("S", 1)
-	g.AddNode("A", 1)
-	g.AddNode("G", 0)
-	_ = g.AddEdge("S", "A", 2)
-	_ = g.AddEdge("A", "G", 5)
-
-	res, _ := g.Search(gotraverse.UCS{}, "S", "G")
-	fmt.Println(res.Path, res.Cost)
-	// Output: [S A G] 7
+// Example_strategies runs several algorithms over the same problem by treating
+// them as interchangeable SearchFunc values.
+func Example_strategies() {
+	g, _ := gotraverse.Parse(
+		"S 8 A 8 B 4 C 3 D inf E inf G 0",
+		"S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5",
+	)
+	p := g.Problem("S", "G")
+	for _, search := range []gotraverse.SearchFunc[string]{
+		gotraverse.BFS[string], gotraverse.UCS[string], gotraverse.AStar[string],
+	} {
+		res, _ := search(p)
+		fmt.Printf("%-3s %v cost=%v\n", res.Algorithm, res.Path, res.Cost)
+	}
+	// Output:
+	// BFS [S A G] cost=18
+	// UCS [S C G] cost=13
+	// A*  [S C G] cost=13
 }

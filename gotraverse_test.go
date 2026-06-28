@@ -1,98 +1,82 @@
 package gotraverse_test
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
 	"github.com/colossus21/gotraverse"
 )
 
-// The reference graph from the README:
-//
-//	S(8) ─3─ A(8) ─3─ D(inf)
-//	 │ ╲      ├─7─ E(inf)
-//	 1  8     └─15─ G(0)
-//	 │   ╲
-//	 B(4) C(3)
-//	 │     │
-//	 20    5
-//	 ╰─→ G ←╯
 const (
 	refNodes = "S 8 A 8 B 4 C 3 D inf E inf G 0"
 	refEdges = "S A 3 S B 1 S C 8 A D 3 A E 7 A G 15 B G 20 C G 5"
 )
 
-func refGraph(t *testing.T) *gotraverse.Graph {
+func refProblem(t *testing.T) gotraverse.Problem[string] {
 	t.Helper()
 	g, err := gotraverse.Parse(refNodes, refEdges)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	return g
+	return g.Problem("S", "G")
 }
 
 func TestSearchAlgorithms(t *testing.T) {
 	tests := []struct {
-		algo     gotraverse.Algorithm
+		name     string
+		search   gotraverse.SearchFunc[string]
 		wantPath []string
-		wantCost int
+		wantCost float64
 	}{
-		// UCS, Greedy, A* and DFS all reach G via the cheapest S-C-G route here.
-		{gotraverse.UCS{}, []string{"S", "C", "G"}, 13},
-		{gotraverse.AStar{}, []string{"S", "C", "G"}, 13},
-		{gotraverse.Greedy{}, []string{"S", "C", "G"}, 13},
-		{gotraverse.DFS{}, []string{"S", "C", "G"}, 13},
-		// BFS finds the fewest-edge path; S-A-G and S-C-G both have 2 edges,
-		// and A is declared before C, so BFS discovers G via A first.
-		{gotraverse.BFS{}, []string{"S", "A", "G"}, 18},
-		// Recursive depth-first variants visit A's edges before C's, so they
-		// reach G via A (2 edges, cost 18) — the shallowest goal.
-		{gotraverse.DepthLimited{Limit: 3}, []string{"S", "A", "G"}, 18},
-		{gotraverse.IterativeDeepening{}, []string{"S", "A", "G"}, 18},
-		{gotraverse.Bidirectional{}, []string{"S", "A", "G"}, 18},
-		// IDA* is cost-optimal like A*, so it returns the cheaper S-C-G.
-		{gotraverse.IDAStar{}, []string{"S", "C", "G"}, 13},
+		// Fewest-edge searches reach G via A (S-A-G and S-C-G both have 2 edges,
+		// and A is declared before C).
+		{"BFS", gotraverse.BFS[string], []string{"S", "A", "G"}, 18},
+		{"IDDFS", gotraverse.IDDFS[string], []string{"S", "A", "G"}, 18},
+		{"Bidirectional", gotraverse.Bidirectional[string], []string{"S", "A", "G"}, 18},
+		{"Depth-Limited", gotraverse.DepthLimited[string](3), []string{"S", "A", "G"}, 18},
+		// DFS's stack pops C before A, so it descends S-C-G.
+		{"DFS", gotraverse.DFS[string], []string{"S", "C", "G"}, 13},
+		// Cost-aware searches find the cheaper S-C-G.
+		{"UCS", gotraverse.UCS[string], []string{"S", "C", "G"}, 13},
+		{"Greedy", gotraverse.Greedy[string], []string{"S", "C", "G"}, 13},
+		{"A*", gotraverse.AStar[string], []string{"S", "C", "G"}, 13},
+		{"IDA*", gotraverse.IDAStar[string], []string{"S", "C", "G"}, 13},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.algo.Name(), func(t *testing.T) {
-			g := refGraph(t)
-			res, err := g.Search(tt.algo, "S", "G")
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := tt.search(refProblem(t))
 			if err != nil {
-				t.Fatalf("Search: %v", err)
+				t.Fatalf("search: %v", err)
 			}
 			if !res.Found {
-				t.Fatalf("goal not found")
+				t.Fatal("goal not found")
 			}
 			if !reflect.DeepEqual(res.Path, tt.wantPath) {
 				t.Errorf("path = %v, want %v", res.Path, tt.wantPath)
 			}
 			if res.Cost != tt.wantCost {
-				t.Errorf("cost = %d, want %d", res.Cost, tt.wantCost)
+				t.Errorf("cost = %v, want %v", res.Cost, tt.wantCost)
 			}
-			if res.Algorithm != tt.algo.Name() {
-				t.Errorf("algorithm = %q, want %q", res.Algorithm, tt.algo.Name())
+			if res.Algorithm != tt.name {
+				t.Errorf("algorithm = %q, want %q", res.Algorithm, tt.name)
 			}
-			if got := res.Order[0]; got != "S" {
-				t.Errorf("first expanded = %q, want start S", got)
-			}
-			if got := res.Order[len(res.Order)-1]; got != "G" {
-				t.Errorf("last expanded = %q, want goal G", got)
+			if len(res.Order) == 0 || res.Order[0] != "S" {
+				t.Errorf("first expanded = %v, want start S", res.Order)
 			}
 		})
 	}
 }
 
 func TestUCSIsOptimal(t *testing.T) {
-	// UCS must return the minimum-cost path even when more edges are involved.
-	g := refGraph(t)
-	res, err := g.Search(gotraverse.UCS{}, "S", "G")
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
 	// S-A-G = 18, S-B-G = 21, S-C-G = 13 -> 13 is optimal.
+	res, err := gotraverse.UCS(refProblem(t))
+	if err != nil {
+		t.Fatalf("UCS: %v", err)
+	}
 	if res.Cost != 13 {
-		t.Errorf("UCS cost = %d, want optimal 13", res.Cost)
+		t.Errorf("UCS cost = %v, want optimal 13", res.Cost)
 	}
 }
 
@@ -102,49 +86,107 @@ func TestGoalUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	for _, algo := range []gotraverse.Algorithm{
-		gotraverse.BFS{}, gotraverse.DFS{}, gotraverse.UCS{}, gotraverse.Greedy{}, gotraverse.AStar{},
-		gotraverse.DepthLimited{Limit: 5}, gotraverse.IterativeDeepening{},
-		gotraverse.IDAStar{}, gotraverse.Bidirectional{},
-	} {
-		res, err := g.Search(algo, "S", "X")
+	p := g.Problem("S", "X")
+	for name, search := range allAlgorithms() {
+		res, err := search(p)
 		if err != nil {
-			t.Fatalf("%s: %v", algo.Name(), err)
+			t.Fatalf("%s: %v", name, err)
 		}
 		if res.Found {
-			t.Errorf("%s: reported reaching unreachable goal X via %v", algo.Name(), res.Path)
+			t.Errorf("%s: reported reaching unreachable goal X via %v", name, res.Path)
 		}
 		if res.Path != nil {
-			t.Errorf("%s: path should be nil when not found, got %v", algo.Name(), res.Path)
+			t.Errorf("%s: path should be nil when not found, got %v", name, res.Path)
 		}
 	}
 }
 
 func TestStartEqualsGoal(t *testing.T) {
-	g := refGraph(t)
-	for _, algo := range []gotraverse.Algorithm{
-		gotraverse.BFS{}, gotraverse.DFS{}, gotraverse.UCS{}, gotraverse.Greedy{}, gotraverse.AStar{},
-		gotraverse.DepthLimited{Limit: 5}, gotraverse.IterativeDeepening{},
-		gotraverse.IDAStar{}, gotraverse.Bidirectional{},
-	} {
-		res, err := g.Search(algo, "S", "S")
+	g, err := gotraverse.Parse(refNodes, refEdges)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := g.Problem("S", "S")
+	for name, search := range allAlgorithms() {
+		res, err := search(p)
 		if err != nil {
-			t.Fatalf("%s: %v", algo.Name(), err)
+			t.Fatalf("%s: %v", name, err)
 		}
 		if !res.Found || !reflect.DeepEqual(res.Path, []string{"S"}) || res.Cost != 0 {
-			t.Errorf("%s: start==goal -> found=%v path=%v cost=%d, want found path=[S] cost=0",
-				algo.Name(), res.Found, res.Path, res.Cost)
+			t.Errorf("%s: start==goal -> found=%v path=%v cost=%v, want found [S] 0",
+				name, res.Found, res.Path, res.Cost)
 		}
 	}
 }
 
-func TestValidationErrors(t *testing.T) {
-	g := refGraph(t)
-	if _, err := g.Search(gotraverse.BFS{}, "Z", "G"); err == nil {
-		t.Error("expected error for unknown start node")
+func TestDepthLimitCutoff(t *testing.T) {
+	p := refProblem(t)
+	if res, _ := gotraverse.DepthLimited[string](1)(p); res.Found {
+		t.Errorf("limit 1 reached G at depth 2: %v", res.Path)
 	}
-	if _, err := g.Search(gotraverse.BFS{}, "S", "Z"); err == nil {
-		t.Error("expected error for unknown goal node")
+	if res, _ := gotraverse.DepthLimited[string](2)(p); !res.Found {
+		t.Error("limit 2 failed to reach G at depth 2")
+	}
+}
+
+func TestImplicitGraph(t *testing.T) {
+	// An implicit, never-materialised graph: from n you may step +1 or +3, each
+	// costing 1. No Graph is built — neighbours are generated on demand.
+	const goal = 5
+	p := gotraverse.Problem[int]{
+		Start: 0,
+		Goal:  gotraverse.GoalNode(goal),
+		Neighbors: func(n int) []gotraverse.Edge[int] {
+			if n >= goal {
+				return nil
+			}
+			return []gotraverse.Edge[int]{{To: n + 1, Weight: 1}, {To: n + 3, Weight: 1}}
+		},
+		Heuristic: func(n int) float64 {
+			if d := goal - n; d > 0 {
+				return float64(d) / 3 // admissible: at most +3 per unit cost
+			}
+			return 0
+		},
+	}
+
+	res, err := gotraverse.AStar(p)
+	if err != nil {
+		t.Fatalf("AStar: %v", err)
+	}
+	if !res.Found {
+		t.Fatal("did not reach goal")
+	}
+	if res.Cost != 3 { // 5 = 3+1+1 or 1+1+3 -> 3 edges minimum
+		t.Errorf("cost = %v, want 3", res.Cost)
+	}
+	if res.Path[0] != 0 || res.Path[len(res.Path)-1] != goal {
+		t.Errorf("path = %v, want 0..%d", res.Path, goal)
+	}
+}
+
+func TestProblemValidation(t *testing.T) {
+	// nil Neighbors
+	if _, err := gotraverse.BFS(gotraverse.Problem[string]{Goal: gotraverse.GoalNode("x")}); err == nil {
+		t.Error("expected error for nil Neighbors")
+	}
+	// nil Goal
+	if _, err := gotraverse.BFS(gotraverse.Problem[string]{
+		Neighbors: func(string) []gotraverse.Edge[string] { return nil },
+	}); err == nil {
+		t.Error("expected error for nil Goal")
+	}
+}
+
+func TestBidirectionalRequirements(t *testing.T) {
+	// ProblemFunc omits GoalNodes, so Bidirectional must refuse it.
+	g, err := gotraverse.Parse(refNodes, refEdges)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	p := g.ProblemFunc("S", gotraverse.GoalNode("G"))
+	if _, err := gotraverse.Bidirectional(p); err == nil {
+		t.Error("expected error: Bidirectional needs GoalNodes")
 	}
 }
 
@@ -170,46 +212,41 @@ func TestParseInfHeuristic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if h, _ := g.Heuristic("D"); h != gotraverse.Inf {
-		t.Errorf("heuristic(D) = %d, want Inf (%d)", h, gotraverse.Inf)
-	}
-}
-
-func TestDepthLimitCutoff(t *testing.T) {
-	g := refGraph(t)
-	// G is 2 edges from S, so a limit of 1 must not reach it...
-	res, err := g.Search(gotraverse.DepthLimited{Limit: 1}, "S", "G")
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	if res.Found {
-		t.Errorf("limit 1 reached G at depth 2: %v", res.Path)
-	}
-	// ...but a limit of 2 must.
-	res, err = g.Search(gotraverse.DepthLimited{Limit: 2}, "S", "G")
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	if !res.Found {
-		t.Error("limit 2 failed to reach G at depth 2")
+	if h := g.Problem("S", "D").Heuristic("D"); !math.IsInf(h, 1) {
+		t.Errorf("heuristic(D) = %v, want +Inf", h)
 	}
 }
 
 func TestProgrammaticBuild(t *testing.T) {
-	g := gotraverse.NewGraph()
-	g.AddNode("S", 1)
-	g.AddNode("G", 0)
-	if err := g.AddEdge("S", "G", 7); err != nil {
+	g := gotraverse.New[int]()
+	g.AddNode(1)
+	g.AddNode(2)
+	if err := g.AddEdge(1, 2, 7); err != nil {
 		t.Fatalf("AddEdge: %v", err)
 	}
-	if err := g.AddEdge("S", "Q", 1); err == nil {
+	if err := g.AddEdge(1, 99, 1); err == nil {
 		t.Error("expected error adding edge to undeclared node")
 	}
-	res, err := g.Search(gotraverse.AStar{}, "S", "G")
+	res, err := gotraverse.AStar(g.Problem(1, 2))
 	if err != nil {
-		t.Fatalf("Search: %v", err)
+		t.Fatalf("AStar: %v", err)
 	}
 	if !res.Found || res.Cost != 7 {
-		t.Errorf("found=%v cost=%d, want found cost=7", res.Found, res.Cost)
+		t.Errorf("found=%v cost=%v, want found 7", res.Found, res.Cost)
+	}
+}
+
+// allAlgorithms returns every search keyed by name, for shared edge-case tests.
+func allAlgorithms() map[string]gotraverse.SearchFunc[string] {
+	return map[string]gotraverse.SearchFunc[string]{
+		"BFS":           gotraverse.BFS[string],
+		"DFS":           gotraverse.DFS[string],
+		"Depth-Limited": gotraverse.DepthLimited[string](10),
+		"IDDFS":         gotraverse.IDDFS[string],
+		"Bidirectional": gotraverse.Bidirectional[string],
+		"UCS":           gotraverse.UCS[string],
+		"Greedy":        gotraverse.Greedy[string],
+		"A*":            gotraverse.AStar[string],
+		"IDA*":          gotraverse.IDAStar[string],
 	}
 }

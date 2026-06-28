@@ -10,30 +10,21 @@ import "math"
 //
 // Like A* and UCS it assumes non-negative edge weights. Order accumulates the
 // expansions of every threshold pass.
-type IDAStar struct{}
-
-func (IDAStar) Name() string { return "IDA*" }
-
-func (IDAStar) Search(g *Graph, start, goal string) (Result, error) {
-	res := Result{Algorithm: "IDA*"}
-	if err := g.validate(start, goal); err != nil {
+func IDAStar[N comparable](p Problem[N]) (Result[N], error) {
+	res := Result[N]{Algorithm: "IDA*"}
+	if err := p.validate(); err != nil {
 		return res, err
 	}
 
-	h := func(n string) int {
-		v, _ := g.Heuristic(n)
-		return v
-	}
-
-	onPath := map[string]bool{}
-	path := []string{}
+	onPath := map[N]bool{}
+	path := []N{}
 
 	// dfs returns whether the goal was found, and the smallest f value that
-	// exceeded the current threshold (math.MaxInt if none did), which becomes
-	// the next pass's threshold.
-	var dfs func(node string, gCost, threshold int) (bool, int)
-	dfs = func(node string, gCost, threshold int) (bool, int) {
-		f := gCost + h(node)
+	// exceeded the current threshold (+Inf if none did), which becomes the next
+	// pass's threshold.
+	var dfs func(node N, gCost, threshold float64) (bool, float64)
+	dfs = func(node N, gCost, threshold float64) (bool, float64) {
+		f := gCost + p.h(node)
 		if f > threshold {
 			return false, f
 		}
@@ -46,19 +37,19 @@ func (IDAStar) Search(g *Graph, start, goal string) (Result, error) {
 			onPath[node] = false
 		}()
 
-		if node == goal {
+		if p.Goal(node) {
 			res.Found = true
-			res.Path = append([]string(nil), path...)
+			res.Path = append([]N(nil), path...)
 			res.Cost = gCost
 			return true, threshold
 		}
 
-		next := math.MaxInt
-		for _, e := range g.adj[node] {
-			if onPath[e.to] {
+		next := math.Inf(1)
+		for _, e := range p.Neighbors(node) {
+			if onPath[e.To] {
 				continue
 			}
-			found, t := dfs(e.to, gCost+e.weight, threshold)
+			found, t := dfs(e.To, gCost+e.Weight, threshold)
 			if found {
 				return true, t
 			}
@@ -69,14 +60,14 @@ func (IDAStar) Search(g *Graph, start, goal string) (Result, error) {
 		return false, next
 	}
 
-	threshold := h(start)
+	threshold := p.h(p.Start)
 	for {
-		found, t := dfs(start, 0, threshold)
+		found, t := dfs(p.Start, 0, threshold)
 		if found {
 			return res, nil
 		}
-		if t == math.MaxInt {
-			return res, nil // exhausted the reachable space: goal unreachable
+		if math.IsInf(t, 1) {
+			return res, nil // reachable space exhausted: goal unreachable
 		}
 		threshold = t
 	}

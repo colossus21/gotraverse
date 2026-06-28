@@ -1,113 +1,136 @@
 package gotraverse
 
-import "sort"
+import "errors"
 
-// Bidirectional is bidirectional breadth-first search. It grows two frontiers
-// at once — forward from the start along out-edges and backward from the goal
-// along in-edges — always expanding the smaller frontier, until they meet. The
-// path it stitches together has the fewest edges, like [BFS], but it typically
+// Bidirectional is bidirectional breadth-first search. It grows two frontiers at
+// once — forward from the start along out-edges and backward from the goal
+// node(s) along in-edges — always expanding the smaller frontier, until they
+// meet. The stitched path has the fewest edges, like [BFS], but it typically
 // touches far fewer nodes. Edge weights and heuristics are ignored.
-type Bidirectional struct{}
-
-func (Bidirectional) Name() string { return "Bidirectional" }
-
-func (Bidirectional) Search(g *Graph, start, goal string) (Result, error) {
-	res := Result{Algorithm: "Bidirectional"}
-	if err := g.validate(start, goal); err != nil {
+//
+// Because it searches backward, it requires Problem.Predecessors and at least
+// one Problem.GoalNodes entry; both are populated automatically by
+// [Graph.Problem]. It returns an error if either is missing.
+func Bidirectional[N comparable](p Problem[N]) (Result[N], error) {
+	res := Result[N]{Algorithm: "Bidirectional"}
+	if err := p.validate(); err != nil {
 		return res, err
 	}
+	if p.Predecessors == nil {
+		return res, errors.New("gotraverse: Bidirectional requires Problem.Predecessors")
+	}
+	if len(p.GoalNodes) == 0 {
+		return res, errors.New("gotraverse: Bidirectional requires Problem.GoalNodes")
+	}
 
-	if start == goal {
+	distF := map[N]float64{p.Start: 0}
+	distB := map[N]float64{}
+	parentF := map[N]N{}
+	parentB := map[N]N{}
+	rootF := map[N]bool{p.Start: true}
+	rootB := map[N]bool{}
+
+	frontierF := []N{p.Start}
+	var frontierB []N
+	for _, gn := range p.GoalNodes {
+		if _, ok := distB[gn]; ok {
+			continue
+		}
+		distB[gn] = 0
+		rootB[gn] = true
+		frontierB = append(frontierB, gn)
+	}
+
+	// Start is itself a goal: trivial path.
+	if _, ok := distB[p.Start]; ok {
 		res.Found = true
-		res.Path = []string{start}
-		res.Order = []string{start}
+		res.Path = []N{p.Start}
+		res.Order = []N{p.Start}
 		return res, nil
 	}
 
-	// Reverse adjacency for the backward search. Built by iterating source
-	// nodes in sorted order so predecessor lists — and therefore the meeting
-	// node and resulting path — are deterministic.
-	reverse := make(map[string][]string)
-	sources := make([]string, 0, len(g.adj))
-	for u := range g.adj {
-		sources = append(sources, u)
-	}
-	sort.Strings(sources)
-	for _, u := range sources {
-		for _, e := range g.adj[u] {
-			reverse[e.to] = append(reverse[e.to], u)
-		}
-	}
+	meetFound := false
+	var meet N
 
-	parentF := map[string]string{start: ""} // node -> predecessor toward start
-	parentB := map[string]string{goal: ""}  // node -> successor toward goal
-	frontierF := []string{start}
-	frontierB := []string{goal}
-
-	fwd := func(n string) []string {
-		outs := make([]string, 0, len(g.adj[n]))
-		for _, e := range g.adj[n] {
-			outs = append(outs, e.to)
-		}
-		return outs
-	}
-	bwd := func(n string) []string { return reverse[n] }
-
-	// expand advances one frontier by a single BFS layer. It records each new
-	// node's parent and returns the next layer plus a meeting node (if any
-	// neighbour was already reached by the opposite search).
-	expand := func(frontier []string, parent, other map[string]string, adj func(string) []string) ([]string, string) {
-		var next []string
-		for _, node := range frontier {
+	expandF := func() {
+		var next []N
+		for _, node := range frontierF {
 			res.Order = append(res.Order, node)
-			for _, nb := range adj(node) {
-				if _, seen := parent[nb]; seen {
+			for _, e := range p.Neighbors(node) {
+				if _, ok := distF[e.To]; ok {
 					continue
 				}
-				parent[nb] = node
-				if _, met := other[nb]; met {
-					return next, nb
+				distF[e.To] = distF[node] + e.Weight
+				parentF[e.To] = node
+				if _, ok := distB[e.To]; ok {
+					meet, meetFound = e.To, true
+					return
 				}
-				next = append(next, nb)
+				next = append(next, e.To)
 			}
 		}
-		return next, ""
+		frontierF = next
 	}
 
-	meet := ""
-	for len(frontierF) > 0 && len(frontierB) > 0 {
-		var m string
+	expandB := func() {
+		var next []N
+		for _, node := range frontierB {
+			res.Order = append(res.Order, node)
+			for _, e := range p.Predecessors(node) { // e.To is a predecessor of node
+				if _, ok := distB[e.To]; ok {
+					continue
+				}
+				distB[e.To] = distB[node] + e.Weight
+				parentB[e.To] = node
+				if _, ok := distF[e.To]; ok {
+					meet, meetFound = e.To, true
+					return
+				}
+				next = append(next, e.To)
+			}
+		}
+		frontierB = next
+	}
+
+	for len(frontierF) > 0 && len(frontierB) > 0 && !meetFound {
 		if len(frontierF) <= len(frontierB) {
-			frontierF, m = expand(frontierF, parentF, parentB, fwd)
+			expandF()
 		} else {
-			frontierB, m = expand(frontierB, parentB, parentF, bwd)
-		}
-		if m != "" {
-			meet = m
-			break
+			expandB()
 		}
 	}
 
-	if meet == "" {
+	if !meetFound {
 		return res, nil // frontiers never met: goal unreachable
 	}
 
-	// Build start..meet from the forward tree, then meet..goal from the
-	// backward tree.
-	var left []string
-	for n := meet; n != ""; n = parentF[n] {
+	// start..meet via the forward tree.
+	var left []N
+	for n := meet; ; {
 		left = append(left, n)
+		if rootF[n] {
+			break
+		}
+		n = parentF[n]
 	}
 	for i, j := 0, len(left)-1; i < j; i, j = i+1, j-1 {
 		left[i], left[j] = left[j], left[i]
 	}
+
+	// meet..goal via the backward tree (meet already in left).
 	path := left
-	for n := parentB[meet]; n != ""; n = parentB[n] {
-		path = append(path, n)
+	if !rootB[meet] {
+		for n := parentB[meet]; ; {
+			path = append(path, n)
+			if rootB[n] {
+				break
+			}
+			n = parentB[n]
+		}
 	}
 
 	res.Found = true
 	res.Path = path
-	res.Cost = pathCost(g, path)
+	res.Cost = distF[meet] + distB[meet]
 	return res, nil
 }

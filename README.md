@@ -4,8 +4,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/colossus21/gotraverse.svg)](https://pkg.go.dev/github.com/colossus21/gotraverse)
 [![Go Report Card](https://goreportcard.com/badge/github.com/colossus21/gotraverse)](https://goreportcard.com/report/github.com/colossus21/gotraverse)
 
-A small Go library of classic graph search algorithms over a weighted directed
-graph with per-node heuristics:
+A small, generic Go library of classic graph search algorithms. Nodes are any
+`comparable` type, weights are `float64`, and graphs may be **explicit**
+(hand-built) or **implicit** (neighbours generated on demand), so the same A*
+runs on a five-node demo or a million-cell grid:
 
 | Algorithm | Type | Uses weights | Uses heuristic | Optimal |
 |-----------|------|:------------:|:--------------:|:-------:|
@@ -19,9 +21,9 @@ graph with per-node heuristics:
 | **A\***                            | informed   | ✓ | ✓ | yes, with an admissible heuristic |
 | **IDA\*** (iterative-deepening A\*)| informed   | ✓ | ✓ | yes, with an admissible heuristic |
 
-All algorithms implement a common `Algorithm` interface, so they are
-interchangeable; `Depth-Limited` additionally takes a `Limit` field, e.g.
-`gotraverse.DepthLimited{Limit: 5}`.
+All algorithms share the `SearchFunc[N]` signature, so they are interchangeable;
+`DepthLimited[N](limit)` is the one configured by argument, e.g.
+`gotraverse.DepthLimited[string](5)`.
 
 ## Install
 
@@ -37,9 +39,15 @@ Requires Go 1.23+.
 
 ## Quick start
 
-Build a graph, then run any algorithm through the `Algorithm` strategy
-interface. Nodes are `name heuristic` pairs; edges are `from to weight` triples.
-A heuristic of `inf` is treated as unreachable-by-heuristic.
+Nodes can be any `comparable` type and edge weights are `float64`. Searches are
+plain functions with the signature `func(Problem[N]) (Result[N], error)`, so the
+node type is inferred from the argument — no type parameters at the call site.
+
+### Explicit graph
+
+For a small, hand-listed graph, build one with `Parse` (`name heuristic` pairs
+and `from to weight` triples; `inf` heuristic means unreachable-by-heuristic),
+then call `Problem` to get something to search:
 
 ```go
 package main
@@ -59,11 +67,7 @@ func main() {
 		panic(err)
 	}
 
-	res, err := g.Search(gotraverse.AStar{}, "S", "G")
-	if err != nil {
-		panic(err)
-	}
-
+	res, _ := gotraverse.AStar(g.Problem("S", "G"))
 	fmt.Println(res.Found) // true
 	fmt.Println(res.Path)  // [S C G]
 	fmt.Println(res.Cost)  // 13
@@ -71,103 +75,110 @@ func main() {
 }
 ```
 
-### Building a graph programmatically
+Build one programmatically with any node type:
 
 ```go
-g := gotraverse.NewGraph()
-g.AddNode("S", 8)
-g.AddNode("G", 0)
-g.AddEdge("S", "G", 7) // returns an error if an endpoint is undeclared
+g := gotraverse.New[int]()
+g.SetHeuristic(1, 8)
+g.AddNode(2)
+g.AddEdge(1, 2, 7) // returns an error if an endpoint is undeclared
+res, _ := gotraverse.AStar(g.Problem(1, 2))
 ```
 
-### Result
+### Implicit graph (the interesting part)
 
-`Search` returns a `Result`:
+You don't need to materialise the graph at all. Supply a `Neighbors` function
+that generates successors on demand, and the algorithms work on grids, puzzles,
+or any state space — even an unbounded one. Here's A* on a 2D grid with walls:
 
 ```go
-type Result struct {
-	Algorithm string   // e.g. "A*"
-	Found     bool     // was the goal reached?
-	Path      []string // start..goal, inclusive (nil if not found)
-	Cost      int      // total edge weight along Path
-	Order     []string // nodes in the order they were expanded
+type Point struct{ X, Y int }
+
+p := gotraverse.Problem[Point]{
+	Start: Point{0, 0},
+	Goal:  gotraverse.GoalNode(Point{9, 9}),
+	Neighbors: func(pt Point) []gotraverse.Edge[Point] {
+		var es []gotraverse.Edge[Point]
+		for _, d := range []Point{{0, -1}, {0, 1}, {-1, 0}, {1, 0}} {
+			n := Point{pt.X + d.X, pt.Y + d.Y}
+			if walkable(n) { // your own bounds/obstacle check
+				es = append(es, gotraverse.Edge[Point]{To: n, Weight: 1})
+			}
+		}
+		return es
+	},
+	Heuristic: func(pt Point) float64 { // Manhattan distance
+		return math.Abs(float64(pt.X-9)) + math.Abs(float64(pt.Y-9))
+	},
+}
+
+res, _ := gotraverse.AStar(p)
+```
+
+`Goal` is a predicate, so you can accept multiple goals (`func(n N) bool`).
+`Heuristic` is optional; omit it and A*/IDA* degrade to uniform-cost search.
+`Bidirectional` additionally needs `Predecessors` and `GoalNodes` — both are
+filled in for you by `Graph.Problem`.
+
+### Result and strategies
+
+```go
+type Result[N comparable] struct {
+	Algorithm string  // e.g. "A*"
+	Found     bool    // was a goal reached?
+	Path      []N     // start..goal, inclusive (nil if not found)
+	Cost      float64 // total edge weight along Path
+	Order     []N     // nodes in the order they were expanded
 }
 ```
 
-### Custom algorithms
-
-`Algorithm` is a two-method interface, so you can plug in your own strategy:
+Because every algorithm shares the `SearchFunc[N]` signature, they're
+interchangeable — store them in a slice and run each:
 
 ```go
-type Algorithm interface {
-	Name() string
-	Search(g *gotraverse.Graph, start, goal string) (gotraverse.Result, error)
+for _, search := range []gotraverse.SearchFunc[string]{
+	gotraverse.BFS[string], gotraverse.UCS[string], gotraverse.AStar[string],
+} {
+	res, _ := search(p)
+	fmt.Println(res.Algorithm, res.Path)
 }
 ```
+
+`DepthLimited[N](limit)` returns a `SearchFunc[N]`; the rest are `SearchFunc[N]`
+directly. You can plug in your own by writing a function with the same signature.
 
 ## Demo
 
-The graph used above:
+`go run ./example` runs every algorithm on the explicit graph below, then solves
+an implicit grid with A*.
 
 ![graph](/img/Graph.png)
 
-Run every algorithm against it:
-
-```sh
-go run ./example
 ```
+# Explicit graph: S -> G
+BFS            [S A G]  cost=18
+DFS            [S C G]  cost=13
+Depth-Limited  [S A G]  cost=18
+IDDFS          [S A G]  cost=18
+Bidirectional  [S A G]  cost=18
+UCS            [S C G]  cost=13
+Greedy         [S C G]  cost=13
+A*             [S C G]  cost=13
+IDA*           [S C G]  cost=13
 
-```
-== BFS ==
-expanded : S -> A -> B -> C -> D -> E -> G
-path     : S -> A -> G
-cost     : 18
-
-== DFS ==
-expanded : S -> C -> G
-path     : S -> C -> G
-cost     : 13
-
-== Depth-Limited ==
-expanded : S -> A -> D -> E -> G
-path     : S -> A -> G
-cost     : 18
-
-== IDDFS ==
-expanded : S -> S -> A -> B -> C -> S -> A -> D -> E -> G
-path     : S -> A -> G
-cost     : 18
-
-== Bidirectional ==
-expanded : S -> G
-path     : S -> A -> G
-cost     : 18
-
-== UCS ==
-expanded : S -> B -> A -> D -> C -> E -> G
-path     : S -> C -> G
-cost     : 13
-
-== Greedy ==
-expanded : S -> C -> G
-path     : S -> C -> G
-cost     : 13
-
-== A* ==
-expanded : S -> B -> A -> C -> G
-path     : S -> C -> G
-cost     : 13
-
-== IDA* ==
-expanded : S -> B -> S -> A -> B -> C -> S -> A -> B -> C -> G
-path     : S -> C -> G
-cost     : 13
+# Implicit grid: A* from S to G
+S....
+*###.
+***#.
+.#*#.
+.#**G
+path length: 8 steps
 ```
 
 The fewest-edge searches (BFS, IDDFS, Bidirectional) return `S -> A -> G`
-(`A` is declared before `C`), while the cost-aware searches (UCS, A\*, IDA\*)
-find the cheaper `S -> C -> G`. The repeated nodes in the IDDFS and IDA\*
-traces are the successive deepening/threshold passes.
+(`A` is declared before `C`), while the cost-aware searches (DFS aside, which
+just descends the stack) find the cheaper `S -> C -> G`. The grid path is the
+optimal route A* finds around the `#` walls without the graph ever being built.
 
 ## Development
 

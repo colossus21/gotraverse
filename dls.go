@@ -1,32 +1,37 @@
 package gotraverse
 
-// DepthLimited is depth-first search bounded to a maximum depth (number of
-// edges from the start). It is the building block of [IterativeDeepening] and
-// is useful on its own to cap how deep a search may go. Like DFS it ignores
-// edge weights and heuristics.
+// DepthLimited returns depth-first search bounded to a maximum depth (number of
+// edges from the start). It is the building block of [IDDFS] and is useful on
+// its own to cap how deep a search may go. Like DFS it ignores edge weights and
+// heuristics.
 //
-// Depth is measured in edges, so Limit 0 explores only the start node, Limit 1
-// reaches its direct successors, and so on. Children are visited in edge
-// declaration order, and cycles are avoided along the current path so the
+// Depth is measured in edges, so limit 0 explores only the start node, limit 1
+// reaches its direct successors, and so on. Neighbours are visited in the order
+// Neighbors returns them, and cycles are avoided along the current path so the
 // search always terminates.
-type DepthLimited struct {
-	// Limit is the maximum depth (in edges) to explore.
-	Limit int
+func DepthLimited[N comparable](limit int) SearchFunc[N] {
+	return func(p Problem[N]) (Result[N], error) {
+		res := Result[N]{Algorithm: "Depth-Limited"}
+		if err := p.validate(); err != nil {
+			return res, err
+		}
+		res, _ = depthLimited(p, limit, "Depth-Limited")
+		return res, nil
+	}
 }
 
-func (DepthLimited) Name() string { return "Depth-Limited" }
+// depthLimited runs a single depth-limited DFS and reports whether a cutoff
+// occurred — i.e. some node was left unexpanded only because the depth limit was
+// reached. A pass with no cutoff means the reachable space was fully explored,
+// which lets [IDDFS] stop without knowing the graph size.
+func depthLimited[N comparable](p Problem[N], limit int, name string) (Result[N], bool) {
+	res := Result[N]{Algorithm: name}
+	onPath := map[N]bool{}
+	path := []N{}
+	cutoff := false
 
-func (d DepthLimited) Search(g *Graph, start, goal string) (Result, error) {
-	res := Result{Algorithm: d.Name()}
-	if err := g.validate(start, goal); err != nil {
-		return res, err
-	}
-
-	onPath := map[string]bool{}
-	path := []string{}
-
-	var dfs func(node string, depth, cost int) bool
-	dfs = func(node string, depth, cost int) bool {
+	var dfs func(node N, depth int, cost float64) bool
+	dfs = func(node N, depth int, cost float64) bool {
 		res.Order = append(res.Order, node)
 		path = append(path, node)
 		onPath[node] = true
@@ -35,26 +40,29 @@ func (d DepthLimited) Search(g *Graph, start, goal string) (Result, error) {
 			onPath[node] = false
 		}()
 
-		if node == goal {
+		if p.Goal(node) {
 			res.Found = true
-			res.Path = append([]string(nil), path...)
+			res.Path = append([]N(nil), path...)
 			res.Cost = cost
 			return true
 		}
-		if depth >= d.Limit {
-			return false // depth limit reached: cutoff
+		if depth >= limit {
+			if len(p.Neighbors(node)) > 0 {
+				cutoff = true // there is more graph below this node
+			}
+			return false
 		}
-		for _, e := range g.adj[node] {
-			if onPath[e.to] {
+		for _, e := range p.Neighbors(node) {
+			if onPath[e.To] {
 				continue // skip nodes already on the current path (cycle)
 			}
-			if dfs(e.to, depth+1, cost+e.weight) {
+			if dfs(e.To, depth+1, cost+e.Weight) {
 				return true
 			}
 		}
 		return false
 	}
 
-	dfs(start, 0, 0)
-	return res, nil
+	dfs(p.Start, 0, 0)
+	return res, cutoff
 }
